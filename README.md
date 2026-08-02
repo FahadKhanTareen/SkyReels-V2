@@ -577,6 +577,16 @@ torchrun --nproc_per_node=2 generate_video.py \
 > **Note**: 
 > - When using an **image-to-video (I2V)** model, you must provide an input image using the `--image  ${image_path}` parameter. The `--guidance_scale 5.0` and `--shift 3.0` is recommended for I2V model.
 
+## 🪩 AI Photo Booth
+
+A kiosk-style AI photo booth built on top of this repo — take a selfie, pick a
+style, get back a stylized AI portrait with a QR code to download it. See
+[`photo_booth/README.md`](photo_booth/README.md) for setup and usage.
+
+```shell
+pip install -r photo_booth/requirements.txt
+python -m photo_booth.app --mock   # try it instantly, no GPU/model needed
+```
 
 ## Contents
   - [Abstract](#abstract)
