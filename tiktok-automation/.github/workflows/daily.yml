@@ -1,0 +1,80 @@
+name: Daily TikTok video
+
+on:
+  schedule:
+    - cron: "17 15 * * *" # every day at 15:17 UTC
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload to TikTok (off = only build the video)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+          pip install -r requirements.txt
+
+      - name: Make and post the video
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          TIKTOK_PRIVACY: ${{ vars.TIKTOK_PRIVACY || 'SELF_ONLY' }}
+          TTS_VOICE: ${{ vars.TTS_VOICE || 'en-US-AndrewNeural' }}
+          NEW_REFRESH_TOKEN_FILE: ${{ runner.temp }}/new_refresh_token
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.upload }}" = "true" ]; then
+            python -m tiktok_bot --upload
+          else
+            python -m tiktok_bot
+          fi
+
+      # TikTok may rotate the refresh token. Saving the new one needs a personal
+      # access token with "Secrets: read and write" stored as the GH_PAT secret.
+      - name: Save rotated refresh token
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          f="${{ runner.temp }}/new_refresh_token"
+          [ -s "$f" ] || exit 0
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::TikTok issued a new refresh token but GH_PAT is not set, so it was not saved. Re-run get_token.py if uploads start failing."
+            exit 0
+          fi
+          gh secret set TIKTOK_REFRESH_TOKEN --repo "${{ github.repository }}" < "$f"
+
+      - name: Keep the video as a download
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video
+          path: |
+            out/**/video.mp4
+            out/**/caption.txt
+          retention-days: 14
+
+      - name: Record what was posted
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/history.json
+          git diff --cached --quiet || git commit -m "Record posted video"
+          git push
